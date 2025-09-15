@@ -1,36 +1,30 @@
 name: BMS CI/CD Pipeline (Ubuntu Latest)
 
-
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
 
     env:
       IMAGE_NAME: bms-app
       CONTAINER_NAME: bms-app
       APP_PORT: 3000
 
-
     steps:
       # 1️⃣ Checkout code
       - name: Checkout Code
         uses: actions/checkout@v4
-
 
       # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
 
       # 3️⃣ Install dependencies
       - name: Install Dependencies
@@ -48,21 +42,17 @@ jobs:
       - name: Trivy FS Scan
         run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
-
       # 6️⃣ Build React App
       - name: Build React App
         run: CI=false npm run build
-
 
       # 7️⃣ Build Docker Image
       - name: Build Docker Image
         run: docker build -t $IMAGE_NAME .
 
-
       # 8️⃣ Trivy Docker Image Scan
       - name: Trivy Docker Image Scan
         run: trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
-
 
       # 9️⃣ Stop & Remove Old Container
       - name: Stop & Remove Existing Container
@@ -82,26 +72,40 @@ jobs:
       # 1️⃣1️⃣ Generate Test Script dynamically
       - name: Create Test Script
         run: |
-          cat << 'EOF' > testscript.sh
-          #!/bin/bash
-          mkdir -p reports
-          echo "Running basic tests..." > reports/test-report.txt
+          cat <<'EOF' > testscript.sh
+#!/bin/bash
+mkdir -p reports
+echo "Running basic tests..." > reports/test-report.txt
 
-          # Check package.json
-          if [ -f package.json ]; then
-            echo "✅ package.json exists: Test passed" >> reports/test-report.txt
-          else
-            echo "❌ package.json missing: Test failed" >> reports/test-report.txt
-            exit 1
-          fi
+# Check package.json
+if [ -f package.json ]; then
+  echo "✅ package.json exists: Test passed" >> reports/test-report.txt
+else
+  echo "❌ package.json missing: Test failed" >> reports/test-report.txt
+  exit 1
+fi
 
-          # Check build folder
-          if [ -d build ]; then
-            echo "✅ build folder exists: Build successful" >> reports/test-report.txt
-          else
-            echo "❌ build folder missing: Build failed" >> reports/test-report.txt
-            exit 1
-         # 1️⃣2️⃣ Run Test Script
+# Check build folder
+if [ -d build ]; then
+  echo "✅ build folder exists: Build successful" >> reports/test-report.txt
+else
+  echo "❌ build folder missing: Build failed" >> reports/test-report.txt
+  exit 1
+fi
+
+# Check if Docker container is running
+if [ $(docker ps -q -f name=$CONTAINER_NAME) ]; then
+  echo "✅ Docker container running: Test passed" >> reports/test-report.txt
+else
+  echo "❌ Docker container not running: Test failed" >> reports/test-report.txt
+  exit 1
+fi
+
+echo "✅ All tests passed!" >> reports/test-report.txt
+EOF
+          chmod +x testscript.sh
+
+      # 1️⃣2️⃣ Run Test Script
       - name: Run Test Script
         run: ./testscript.sh
 
@@ -118,4 +122,3 @@ jobs:
         with:
           name: bms-reports
           path: reports/
-
