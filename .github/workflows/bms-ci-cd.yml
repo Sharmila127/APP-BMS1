@@ -8,15 +8,14 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest  # GitHub-hosted Ubuntu
+    runs-on: self-hosted  # Must be your local Ubuntu machine
 
     env:
       IMAGE_NAME: my-bms-app
       CONTAINER_NAME: my-bms-container
       APP_PORT: 3000
-      SONAR_HOST_URL: https://sonarcloud.io
-      SONAR_ORG: ${{ secrets.SONAR_ORG }}      # Your SonarCloud organization key
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}  # Your SonarCloud token
+      SONAR_HOST_URL: http://localhost:9000
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -44,12 +43,11 @@ jobs:
           echo "Scanning source code for vulnerabilities..."
           trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
-      - name: SonarCloud Analysis
+      - name: SonarQube Analysis
         run: |
-          echo "Running SonarCloud analysis..."
+          echo "Running SonarQube analysis..."
           sonar-scanner \
             -Dsonar.projectKey=BookMyShow \
-            -Dsonar.organization=$SONAR_ORG \
             -Dsonar.sources=. \
             -Dsonar.host.url=$SONAR_HOST_URL \
             -Dsonar.login=$SONAR_TOKEN
@@ -72,4 +70,28 @@ jobs:
       - name: Stop & Remove Existing Container
         run: |
           echo "Stopping old container if exists..."
-          docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONTAINER_
+          docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONTAINER_NAME || echo "No old container found"
+
+      - name: Run Docker Container
+        run: |
+          echo "Running Docker container..."
+          docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME -e BROWSER=none $IMAGE_NAME
+          sleep 15
+
+      - name: DAST Scan (OWASP ZAP)
+        run: |
+          echo "Running OWASP ZAP DAST scan..."
+          docker run --rm --network host zaproxy/zap-stable zap-baseline.py \
+            -t http://localhost:$APP_PORT \
+            -r zap_report.html || true
+
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap_report.html
+
+      - name: Smoke Test
+        run: |
+          echo "Verifying app is running..."
+          curl -f http://localhost:$APP_PORT || exit 1
