@@ -7,15 +7,14 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-deploy:
-    name: Build, Scan & Deploy Book-My-Show App
-    runs-on: ubuntu-latest  # ✅ Use GitHub-hosted Ubuntu machine
+  build-and-deploy:
+    runs-on: self-hosted  # ✅ Use your local Ubuntu machine as runner
 
     env:
       IMAGE_NAME: my-bms-app
       CONTAINER_NAME: my-bms-container
       APP_PORT: 3000
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_HOST_URL: http://localhost:9000
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
@@ -25,51 +24,67 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install Dependencies
         run: |
+          echo "Installing npm dependencies..."
           npm install
           chmod -R 755 node_modules/.bin
 
-      - name: Install Tools
+      - name: Install Trivy & Sonar Scanner
         run: |
-          sudo apt update -y
-          sudo apt install -y docker.io curl
+          echo "Installing Trivy and Sonar Scanner..."
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
           npm install -g sonarqube-scanner
 
       - name: Trivy FS Scan
-        run: trivy fs --exit-code 1 --severity HIGH,CRITICAL . || true
+        run: |
+          echo "Scanning source code for vulnerabilities..."
+          trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
       - name: SonarQube Analysis
         run: |
-          npx sonarqube-scanner \
+          echo "Running SonarQube analysis..."
+          sonar-scanner \
             -Dsonar.projectKey=BookMyShow \
             -Dsonar.sources=. \
             -Dsonar.host.url=$SONAR_HOST_URL \
             -Dsonar.login=$SONAR_TOKEN
 
       - name: Build React App
-        run: CI=false npm run build
+        run: |
+          echo "Building React app..."
+          CI=false npm run build
 
       - name: Build Docker Image
-        run: docker build -t $IMAGE_NAME .
+        run: |
+          echo "Building Docker image..."
+          docker build -t $IMAGE_NAME .
 
-      - name: Trivy Docker Image Scan
-        run: trivy image --exit-code 1 --severity HIGH,CRITICAL $IMAGE_NAME || true
+      - name: Trivy Image Scan
+        run: |
+          echo "Scanning Docker image for vulnerabilities..."
+          trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
+
+      - name: Stop & Remove Existing Container
+        run: |
+          echo "Stopping old container if exists..."
+          docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONTAINER_NAME || echo "No old container found"
 
       - name: Run Docker Container
         run: |
+          echo "Running Docker container..."
           docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME -e BROWSER=none $IMAGE_NAME
           sleep 15
 
       - name: DAST Scan (OWASP ZAP)
         run: |
-          docker run --rm --network host \
-            owasp/zap2docker-stable zap-baseline.py \
+          echo "Running OWASP ZAP DAST scan..."
+          docker run --rm --network host zaproxy/zap-stable zap-baseline.py \
             -t http://localhost:$APP_PORT \
             -r zap_report.html || true
+
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
@@ -77,4 +92,6 @@ jobs:
           path: zap_report.html
 
       - name: Smoke Test
-        run: curl -f http://localhost:$APP_PORT || exit 1
+        run: |
+          echo "Verifying app is running..."
+          curl -f http://localhost:$APP_PORT || exit 1
