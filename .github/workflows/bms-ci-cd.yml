@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      IMAGE_NAME: my-bms-app
+      IMAGE_NAME: bms-app
       CONTAINER_NAME: bms-app
       APP_PORT: 3000
 
@@ -32,7 +32,7 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      # 4️⃣ Install Trivy & Pull ZAP Image
+      # 4️⃣ Install Trivy & Pull OWASP ZAP
       - name: Install Trivy & Pull ZAP Image
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
