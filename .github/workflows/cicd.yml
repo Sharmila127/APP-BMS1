@@ -70,24 +70,24 @@ mkdir -p reports
 echo "Running basic tests..." > reports/test-report.txt
 
 if [ -f package.json ]; then
-  echo "✅ package.json exists: Test passed" >> reports/test-report.txt
+echo "✅ package.json exists: Test passed" >> reports/test-report.txt
 else
-  echo "❌ package.json missing: Test failed" >> reports/test-report.txt
-  exit 1
+echo "❌ package.json missing: Test failed" >> reports/test-report.txt
+exit 1
 fi
 
 if [ -d build ]; then
-  echo "✅ build folder exists: Build successful" >> reports/test-report.txt
+echo "✅ build folder exists: Build successful" >> reports/test-report.txt
 else
-  echo "❌ build folder missing: Build failed" >> reports/test-report.txt
-  exit 1
+echo "❌ build folder missing: Build failed" >> reports/test-report.txt
+exit 1
 fi
 
 if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
-  echo "✅ Docker container running: Test passed" >> reports/test-report.txt
+echo "✅ Docker container running: Test passed" >> reports/test-report.txt
 else
-  echo "❌ Docker container not running: Test failed" >> reports/test-report.txt
-  exit 1
+echo "❌ Docker container not running: Test failed" >> reports/test-report.txt
+exit 1
 fi
 
 echo "✅ All tests passed!" >> reports/test-report.txt
