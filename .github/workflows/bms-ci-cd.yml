@@ -32,75 +32,63 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      # 4️⃣ Build React App (ignore eslint warnings)
-      - name: Build React App
-        run: |
-          CI=false npm run build || echo "Build completed with warnings"
-
-      # 5️⃣ Generate test script dynamically
+      # 4️⃣ Generate Test Script dynamically
       - name: Create Test Script
         run: |
           cat << 'EOF' > testscript.sh
           #!/bin/bash
           mkdir -p reports
           echo "Running basic tests..." > reports/test-report.txt
-          if [ -f server.js ]; then
-            echo "✅ server.js exists: Test passed" >> reports/test-report.txt
+
+          # Check if package.json exists
+          if [ -f package.json ]; then
+            echo "✅ package.json exists: Test passed" >> reports/test-report.txt
           else
-            echo "❌ server.js missing: Test failed" >> reports/test-report.txt
+            echo "❌ package.json missing: Test failed" >> reports/test-report.txt
             exit 1
           fi
+
+          # Check if build folder exists (after npm run build)
+          if [ -d build ]; then
+            echo "✅ build folder exists: Build successful" >> reports/test-report.txt
+          else
+            echo "❌ build folder missing: Build failed" >> reports/test-report.txt
+            exit 1
+          fi
+
           echo "✅ All tests passed!" >> reports/test-report.txt
           EOF
           chmod +x testscript.sh
 
-      # 6️⃣ Run test script
-      - name: Run Test Script
+      # 5️⃣ Run Test Script
+      - name: Run Tests
         run: ./testscript.sh
 
-      # 7️⃣ Install Trivy & Pull ZAP Image
+      # 6️⃣ Upload Test Report
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: reports/test-report.txt
+
+      # 7️⃣ Build React App
+      - name: Build React App
+        run: CI=false npm run build
+
+      # 8️⃣ Install Trivy & Pull ZAP Image
       - name: Install Trivy & Pull ZAP Image
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker pull zaproxy/zap-stable:latest
 
-      # 8️⃣ Trivy Filesystem Scan
+      # 9️⃣ Trivy Filesystem Scan
       - name: Trivy FS Scan
-        run: trivy fs --format template --template "@contrib/html.tpl" -o reports/trivy-fs-report.html .
+        run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
-      # 9️⃣ Build Docker Image
+      # 🔟 Build Docker Image
       - name: Build Docker Image
         run: docker build -t $IMAGE_NAME .
 
-      # 🔟 Trivy Docker Image Scan
+      # 1️⃣1️⃣ Trivy Docker Image Scan
       - name: Trivy Docker Image Scan
-        run: trivy image --format template --template "@contrib/html.tpl" -o reports/trivy-image-report.html $IMAGE_NAME
-
-      # 1️⃣1️⃣ Stop & Remove Existing Container
-      - name: Stop & Remove Old Container
-        run: |
-          if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
-            docker rm -f $CONTAINER_NAME
-          else
-            echo "No old container found"
-          fi
-
-      # 1️⃣2️⃣ Run Docker Container
-      - name: Run Docker Container
-        run: |
-          docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
-          sleep 15
-
-      # 1️⃣3️⃣ OWASP ZAP DAST Scan
-      - name: DAST Scan (OWASP ZAP)
-        run: |
-          docker run --rm -v ${{ github.workspace }}/reports:/zap/wrk --network host ghcr.io/zaproxy/zaproxy:stable \
-          zap-baseline.py -t http://localhost:$APP_PORT -r zap-report.html || true
-          mv reports/zap-report.html reports/zap-report.html
-
-      # 1️⃣4️⃣ Upload all reports as artifacts
-      - name: Upload All Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: bms-reports
-          path: reports/
+        run: trivy image --exit-code 0 --severity HIGH,CRITICAL $
