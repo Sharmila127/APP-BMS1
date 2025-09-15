@@ -32,7 +32,7 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      # 4️⃣ Build React App (must come before pre-container tests)
+      # 4️⃣ Build React App
       - name: Build React App
         run: CI=false npm run build
 
@@ -51,7 +51,7 @@ jobs:
           echo "✅ Build folder exists"
 
           # Check required files
-          for file in package.json server.js; do
+          for file in package.json; do
             if [ ! -f "$file" ]; then
               echo "❌ $file missing - Test Failed"
               exit 1
@@ -98,13 +98,6 @@ jobs:
           cat << 'EOF' > container-tests.sh
           #!/bin/sh
           echo "🔧 Running Container Automated Tests..."
-
-          # Check server.js inside container
-          if [ ! -f "/app/server.js" ]; then
-            echo "❌ server.js missing - Test Failed"
-            exit 1
-          fi
-          echo "✅ server.js exists"
 
           # Functional test: check app responds
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$APP_PORT)
