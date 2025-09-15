@@ -38,6 +38,10 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
           docker pull zaproxy/zap-stable:latest
 
+      # ✅ Verify Trivy Installation
+      - name: Check Trivy Version
+        run: trivy --version
+
       # 5️⃣ Trivy Filesystem Scan
       - name: Trivy FS Scan
         run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
@@ -52,4 +56,73 @@ jobs:
 
       # 8️⃣ Trivy Docker Image Scan
       - name: Trivy Docker Image Scan
-        run: triv
+        run: trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
+
+      # 9️⃣ Stop & Remove Old Container
+      - name: Stop & Remove Existing Container
+        run: |
+          if [ "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
+            docker rm -f $CONTAINER_NAME
+          else
+            echo "No old container found"
+          fi
+
+      # 🔟 Run Docker Container
+      - name: Run Docker Container
+        run: |
+          docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
+          sleep 15
+
+      # 1️⃣1️⃣ Generate Test Script dynamically
+      - name: Create Test Script
+        run: |
+          cat << 'EOF' > testscript.sh
+#!/bin/bash
+mkdir -p reports
+echo "Running basic tests..." > reports/test-report.txt
+
+# Check package.json
+if [ -f package.json ]; then
+  echo "✅ package.json exists: Test passed" >> reports/test-report.txt
+else
+  echo "❌ package.json missing: Test failed" >> reports/test-report.txt
+  exit 1
+fi
+
+# Check build folder
+if [ -d build ]; then
+  echo "✅ build folder exists: Build successful" >> reports/test-report.txt
+else
+  echo "❌ build folder missing: Build failed" >> reports/test-report.txt
+  exit 1
+fi
+
+# Check if Docker container is running
+if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+  echo "✅ Docker container running: Test passed" >> reports/test-report.txt
+else
+  echo "❌ Docker container not running: Test failed" >> reports/test-report.txt
+  exit 1
+fi
+
+echo "✅ All tests passed!" >> reports/test-report.txt
+EOF
+          chmod +x testscript.sh
+
+      # 1️⃣2️⃣ Run Test Script
+      - name: Run Test Script
+        run: ./testscript.sh
+
+      # 1️⃣3️⃣ OWASP ZAP DAST Scan
+      - name: DAST Scan (OWASP ZAP)
+        run: |
+          docker run --rm --network host zaproxy/zap-stable zap-baseline.py \
+            -t http://localhost:$APP_PORT \
+            -r reports/zap-report.html || true
+
+      # 1️⃣4️⃣ Upload Reports (Test + ZAP)
+      - name: Upload Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: bms-reports
+          path: reports/
