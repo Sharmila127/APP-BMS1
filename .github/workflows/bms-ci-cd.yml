@@ -8,14 +8,15 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest  # ✅ GitHub-hosted Ubuntu runner
+    runs-on: ubuntu-latest  # GitHub-hosted Ubuntu
 
     env:
       IMAGE_NAME: my-bms-app
       CONTAINER_NAME: my-bms-container
       APP_PORT: 3000
-      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # SonarCloud or public SonarQube
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: https://sonarcloud.io
+      SONAR_ORG: ${{ secrets.SONAR_ORG }}      # Your SonarCloud organization key
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}  # Your SonarCloud token
 
     steps:
       - name: Checkout Code
@@ -43,11 +44,12 @@ jobs:
           echo "Scanning source code for vulnerabilities..."
           trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
-      - name: SonarQube/SonarCloud Analysis
+      - name: SonarCloud Analysis
         run: |
-          echo "Running SonarQube/SonarCloud analysis..."
+          echo "Running SonarCloud analysis..."
           sonar-scanner \
             -Dsonar.projectKey=BookMyShow \
+            -Dsonar.organization=$SONAR_ORG \
             -Dsonar.sources=. \
             -Dsonar.host.url=$SONAR_HOST_URL \
             -Dsonar.login=$SONAR_TOKEN
@@ -62,7 +64,7 @@ jobs:
           echo "Building Docker image..."
           docker build -t $IMAGE_NAME .
 
-      - name: Trivy Image Scan
+      - name: Trivy Docker Image Scan
         run: |
           echo "Scanning Docker image for vulnerabilities..."
           trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
@@ -70,4 +72,4 @@ jobs:
       - name: Stop & Remove Existing Container
         run: |
           echo "Stopping old container if exists..."
-          docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONT_
+          docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONTAINER_
