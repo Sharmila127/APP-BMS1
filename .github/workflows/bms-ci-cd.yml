@@ -1,4 +1,4 @@
-name: BMS CI/CD Pipeline (Without Sonar)
+name: BMS CI/CD Pipeline (Ubuntu Latest)
 
 on:
   push:
@@ -7,76 +7,79 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-and-scan:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     env:
       IMAGE_NAME: my-bms-app
-      CONTAINER_NAME: my-bms-container
+      CONTAINER_NAME: bms-app
       APP_PORT: 3000
 
     steps:
+      # 1️⃣ Checkout code
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      # 3️⃣ Install dependencies
       - name: Install Dependencies
         run: |
-          echo "Installing npm dependencies..."
           npm install
           chmod -R 755 node_modules/.bin
 
-      - name: Install Trivy & OWASP ZAP
+      # 4️⃣ Install Trivy & OWASP ZAP
+      - name: Install Trivy & Pull ZAP Image
         run: |
-          echo "Installing Trivy..."
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          echo "Pulling OWASP ZAP Docker image..."
           docker pull zaproxy/zap-stable:latest
 
-      - name: Trivy Filesystem Scan
-        run: |
-          echo "Scanning source code for vulnerabilities..."
-          trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
+      # 5️⃣ Trivy Filesystem Scan
+      - name: Trivy FS Scan
+        run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
+      # 6️⃣ Build React App
       - name: Build React App
-        run: |
-          echo "Building React app..."
-          CI=false npm run build
+        run: CI=false npm run build
 
+      # 7️⃣ Build Docker Image
       - name: Build Docker Image
-        run: |
-          echo "Building Docker image..."
-          docker build -t $IMAGE_NAME .
+        run: docker build -t $IMAGE_NAME .
 
+      # 8️⃣ Trivy Docker Image Scan
       - name: Trivy Docker Image Scan
-        run: |
-          echo "Scanning Docker image for vulnerabilities..."
-          trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
+        run: trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
 
-      - name: Stop & Remove Existing Container
+      # 9️⃣ Stop & Remove Existing Container
+      - name: Stop & Remove Old Container
         run: |
-          echo "Stopping old container if exists..."
           docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONTAINER_NAME || echo "No old container found"
 
+      # 🔟 Run Docker Container
       - name: Run Docker Container
         run: |
-          echo "Running Docker container..."
-          docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME -e BROWSER=none $IMAGE_NAME
+          docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
           sleep 15
 
+      # 1️⃣1️⃣ OWASP ZAP DAST Scan
       - name: DAST Scan (OWASP ZAP)
         run: |
-          echo "Running OWASP ZAP DAST scan..."
           docker run --rm --network host zaproxy/zap-stable zap-baseline.py \
             -t http://localhost:$APP_PORT \
             -r zap_report.html || true
 
+      # 1️⃣2️⃣ Upload ZAP Report
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap_report.htm_
+          path: zap_report.html
+
+      # 1️⃣3️⃣ Smoke Test
+      - name: Smoke Test
+        run: |
+          curl -f http://localhost:$APP_PORT || exit 1
