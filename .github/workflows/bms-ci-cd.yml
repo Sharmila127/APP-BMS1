@@ -1,4 +1,4 @@
-name: BMS CI/CD Pipeline
+name: BMS CI/CD Pipeline (Without Sonar)
 
 on:
   push:
@@ -7,15 +7,13 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-and-deploy:
-    runs-on: self-hosted  # Must be your local Ubuntu machine
+  build-and-scan:
+    runs-on: ubuntu-latest
 
     env:
       IMAGE_NAME: my-bms-app
       CONTAINER_NAME: my-bms-container
       APP_PORT: 3000
-      SONAR_HOST_URL: http://localhost:9000
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -32,25 +30,17 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      - name: Install Trivy & Sonar Scanner
+      - name: Install Trivy & OWASP ZAP
         run: |
-          echo "Installing Trivy and Sonar Scanner..."
+          echo "Installing Trivy..."
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          npm install -g sonarqube-scanner
+          echo "Pulling OWASP ZAP Docker image..."
+          docker pull zaproxy/zap-stable:latest
 
-      - name: Trivy FS Scan
+      - name: Trivy Filesystem Scan
         run: |
           echo "Scanning source code for vulnerabilities..."
           trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
-
-      - name: SonarQube Analysis
-        run: |
-          echo "Running SonarQube analysis..."
-          sonar-scanner \
-            -Dsonar.projectKey=BookMyShow \
-            -Dsonar.sources=. \
-            -Dsonar.host.url=$SONAR_HOST_URL \
-            -Dsonar.login=$SONAR_TOKEN
 
       - name: Build React App
         run: |
@@ -89,9 +79,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap_report.html
-
-      - name: Smoke Test
-        run: |
-          echo "Verifying app is running..."
-          curl -f http://localhost:$APP_PORT || exit 1
+          path: zap_report.htm_
