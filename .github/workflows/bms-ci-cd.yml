@@ -32,7 +32,44 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      # 4️⃣ Generate Test Script dynamically
+      # 4️⃣ Install Trivy & Pull ZAP Image
+      - name: Install Trivy & Pull ZAP Image
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          docker pull zaproxy/zap-stable:latest
+
+      # 5️⃣ Trivy Filesystem Scan
+      - name: Trivy FS Scan
+        run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
+
+      # 6️⃣ Build React App
+      - name: Build React App
+        run: CI=false npm run build
+
+      # 7️⃣ Build Docker Image
+      - name: Build Docker Image
+        run: docker build -t $IMAGE_NAME .
+
+      # 8️⃣ Trivy Docker Image Scan
+      - name: Trivy Docker Image Scan
+        run: trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
+
+      # 9️⃣ Stop & Remove Old Container
+      - name: Stop & Remove Existing Container
+        run: |
+          if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
+            docker rm -f $CONTAINER_NAME
+          else
+            echo "No old container found"
+          fi
+
+      # 🔟 Run Docker Container
+      - name: Run Docker Container
+        run: |
+          docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
+          sleep 15
+
+      # 1️⃣1️⃣ Generate Test Script dynamically
       - name: Create Test Script
         run: |
           cat << 'EOF' > testscript.sh
@@ -40,7 +77,7 @@ jobs:
           mkdir -p reports
           echo "Running basic tests..." > reports/test-report.txt
 
-          # Check if package.json exists
+          # Check package.json
           if [ -f package.json ]; then
             echo "✅ package.json exists: Test passed" >> reports/test-report.txt
           else
@@ -48,47 +85,9 @@ jobs:
             exit 1
           fi
 
-          # Check if build folder exists (after npm run build)
+          # Check build folder
           if [ -d build ]; then
             echo "✅ build folder exists: Build successful" >> reports/test-report.txt
           else
             echo "❌ build folder missing: Build failed" >> reports/test-report.txt
             exit 1
-          fi
-
-          echo "✅ All tests passed!" >> reports/test-report.txt
-          EOF
-          chmod +x testscript.sh
-
-      # 5️⃣ Run Test Script
-      - name: Run Tests
-        run: ./testscript.sh
-
-      # 6️⃣ Upload Test Report
-      - name: Upload Test Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: reports/test-report.txt
-
-      # 7️⃣ Build React App
-      - name: Build React App
-        run: CI=false npm run build
-
-      # 8️⃣ Install Trivy & Pull ZAP Image
-      - name: Install Trivy & Pull ZAP Image
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
-          docker pull zaproxy/zap-stable:latest
-
-      # 9️⃣ Trivy Filesystem Scan
-      - name: Trivy FS Scan
-        run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
-
-      # 🔟 Build Docker Image
-      - name: Build Docker Image
-        run: docker build -t $IMAGE_NAME .
-
-      # 1️⃣1️⃣ Trivy Docker Image Scan
-      - name: Trivy Docker Image Scan
-        run: trivy image --exit-code 0 --severity HIGH,CRITICAL $
