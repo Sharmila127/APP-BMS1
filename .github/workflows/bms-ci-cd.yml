@@ -32,14 +32,18 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      # 4️⃣ Pre-Container Automated Tests
+      # 4️⃣ Build React App (must come before pre-container tests)
+      - name: Build React App
+        run: CI=false npm run build
+
+      # 5️⃣ Pre-Container Automated Tests
       - name: Pre-Container Automated Tests
         run: |
           cat << 'EOF' > testscript.sh
           #!/bin/sh
           echo "🔧 Running Pre-Container Automated Tests..."
 
-          # Check build folder
+          # Check build folder exists
           if [ ! -d "build" ]; then
             echo "❌ Build folder not found - Test Failed"
             exit 1
@@ -60,10 +64,6 @@ jobs:
           EOF
           chmod +x testscript.sh
           ./testscript.sh
-
-      # 5️⃣ Build React App
-      - name: Build React App
-        run: CI=false npm run build
 
       # 6️⃣ Build Docker Image
       - name: Build Docker Image
