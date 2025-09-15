@@ -38,25 +38,30 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
           docker pull zaproxy/zap-stable:latest
 
-      # 5️⃣ Trivy Filesystem Scan + HTML Report
+      # 5️⃣ Download Trivy HTML template
+      - name: Download Trivy HTML Template
+        run: |
+          curl -sL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
+
+      # 6️⃣ Trivy Filesystem Scan + HTML Report
       - name: Trivy Filesystem Scan
         run: |
-          trivy fs --exit-code 0 --severity HIGH,CRITICAL -f template -o trivy-fs-report.html --template "@contrib/html.tpl" .
+          trivy fs --exit-code 0 --severity HIGH,CRITICAL -f template -o trivy-fs-report.html --template ./html.tpl .
 
-      # 6️⃣ Build React App
+      # 7️⃣ Build React App
       - name: Build React App
         run: CI=false npm run build
 
-      # 7️⃣ Build Docker Image
+      # 8️⃣ Build Docker Image
       - name: Build Docker Image
         run: docker build -t $IMAGE_NAME .
 
-      # 8️⃣ Trivy Docker Image Scan + HTML Report
+      # 9️⃣ Trivy Docker Image Scan + HTML Report
       - name: Trivy Docker Image Scan
         run: |
-          trivy image --exit-code 0 --severity HIGH,CRITICAL -f template -o trivy-image-report.html --template "@contrib/html.tpl" $IMAGE_NAME
+          trivy image --exit-code 0 --severity HIGH,CRITICAL -f template -o trivy-image-report.html --template ./html.tpl $IMAGE_NAME
 
-      # 9️⃣ Stop & Remove Existing Container
+      # 🔟 Stop & Remove Existing Container
       - name: Stop & Remove Old Container
         run: |
           if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
@@ -65,20 +70,20 @@ jobs:
             echo "No old container found"
           fi
 
-      # 🔟 Run Docker Container
+      # 1️⃣1️⃣ Run Docker Container
       - name: Run Docker Container
         run: |
           docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
           sleep 15
 
-      # 1️⃣1️⃣ OWASP ZAP DAST Scan + HTML Report
+      # 1️⃣2️⃣ OWASP ZAP DAST Scan + HTML Report
       - name: DAST Scan (OWASP ZAP)
         run: |
           docker run --rm --network host zaproxy/zap-stable zap-baseline.py \
             -t http://localhost:$APP_PORT \
             -r zap_report.html || true
 
-      # 1️⃣2️⃣ Upload Trivy Reports
+      # 1️⃣3️⃣ Upload Trivy Reports
       - name: Upload Trivy Reports
         uses: actions/upload-artifact@v4
         with:
@@ -87,14 +92,14 @@ jobs:
             trivy-fs-report.html
             trivy-image-report.html
 
-      # 1️⃣3️⃣ Upload ZAP Report
+      # 1️⃣4️⃣ Upload ZAP Report
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
           path: zap_report.html
 
-      # 1️⃣4️⃣ Smoke Test
+      # 1️⃣5️⃣ Smoke Test
       - name: Smoke Test
         run: |
           curl -f http://localhost:$APP_PORT || exit 1
