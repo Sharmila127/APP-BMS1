@@ -32,7 +32,7 @@ jobs:
           npm install
           chmod -R 755 node_modules/.bin
 
-      # 4️⃣ Install Trivy & OWASP ZAP
+      # 4️⃣ Install Trivy & Pull ZAP Image
       - name: Install Trivy & Pull ZAP Image
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
@@ -57,7 +57,11 @@ jobs:
       # 9️⃣ Stop & Remove Existing Container
       - name: Stop & Remove Old Container
         run: |
-          docker ps -a -q -f name=$CONTAINER_NAME && docker rm -f $CONTAINER_NAME || echo "No old container found"
+          if [ $(docker ps -a -q -f name=$CONTAINER_NAME) ]; then
+            docker rm -f $CONTAINER_NAME
+          else
+            echo "No old container found"
+          fi
 
       # 🔟 Run Docker Container
       - name: Run Docker Container
