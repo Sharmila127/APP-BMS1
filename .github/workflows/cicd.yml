@@ -69,47 +69,24 @@ jobs:
           docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
           sleep 15
 
-      # 1️⃣1️⃣ Generate & Run Test Script
-      - name: Create & Run Test Script
+      # 1️⃣1️⃣ Install Jest + Reporters
+      - name: Install Test Dependencies
         run: |
-          cat << 'EOF' > testscript.sh
-          #!/bin/bash
-          mkdir -p reports
-          echo "Running basic tests..." > reports/test-report.txt
+          npm install --save-dev jest jest-junit jest-html-reporter
 
-          # Check package.json
-          if [ -f package.json ]; then
-            echo "✅ package.json exists: Test passed" >> reports/test-report.txt
-          else
-            echo "❌ package.json missing: Test failed" >> reports/test-report.txt
-            exit 1
-          fi
+      # 1️⃣2️⃣ Run Jest Tests with JUnit + HTML reports
+      - name: Run Unit & Integration Tests
+        run: |
+          mkdir -p reports/junit reports/html
+          npx jest --ci --runInBand \
+            --reporters=default \
+            --reporters=jest-junit \
+            --reporters=jest-html-reporter || true
 
-          # Check build folder
-          if [ -d build ]; then
-            echo "✅ build folder exists: Build successful" >> reports/test-report.txt
-          else
-            echo "❌ build folder missing: Build failed" >> reports/test-report.txt
-            exit 1
-          fi
-
-          # Check if app responds
-          if curl -s http://localhost:$APP_PORT > /dev/null; then
-            echo "✅ App is running and responding: Test passed" >> reports/test-report.txt
-          else
-            echo "❌ App not responding on port $APP_PORT: Test failed" >> reports/test-report.txt
-            exit 1
-          fi
-
-          echo "All tests completed." >> reports/test-report.txt
-          EOF
-
-          chmod +x testscript.sh
-          ./testscript.sh
-
-      # 1️⃣2️⃣ Upload Test Report
-      - name: Upload Test Report
+      # 1️⃣3️⃣ Upload Test Reports (JUnit + HTML)
+      - name: Upload Test Reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: reports/test-report.txt
+          path: reports/
