@@ -1,36 +1,30 @@
 name: BMS CI/CD Pipeline (Ubuntu Latest)
 
-
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
 
     env:
       IMAGE_NAME: bms-app
       CONTAINER_NAME: bms-app
       APP_PORT: 3000
 
-
     steps:
       # 1️⃣ Checkout code
       - name: Checkout Code
         uses: actions/checkout@v4
-
 
       # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
 
       # 3️⃣ Install dependencies
       - name: Install Dependencies
@@ -48,21 +42,17 @@ jobs:
       - name: Trivy FS Scan
         run: trivy fs --exit-code 0 --severity HIGH,CRITICAL . || true
 
-
       # 6️⃣ Build React App
       - name: Build React App
         run: CI=false npm run build
-
 
       # 7️⃣ Build Docker Image
       - name: Build Docker Image
         run: docker build -t $IMAGE_NAME .
 
-
       # 8️⃣ Trivy Docker Image Scan
       - name: Trivy Docker Image Scan
         run: trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE_NAME || true
-
 
       # 9️⃣ Stop & Remove Old Container
       - name: Stop & Remove Existing Container
@@ -79,8 +69,8 @@ jobs:
           docker run -d -p $APP_PORT:$APP_PORT --name $CONTAINER_NAME $IMAGE_NAME
           sleep 15
 
-      # 1️⃣1️⃣ Generate Test Script dynamically
-      - name: Create Test Script
+      # 1️⃣1️⃣ Generate & Run Test Script
+      - name: Create & Run Test Script
         run: |
           cat << 'EOF' > testscript.sh
           #!/bin/bash
@@ -101,3 +91,25 @@ jobs:
           else
             echo "❌ build folder missing: Build failed" >> reports/test-report.txt
             exit 1
+          fi
+
+          # Check if app responds
+          if curl -s http://localhost:$APP_PORT > /dev/null; then
+            echo "✅ App is running and responding: Test passed" >> reports/test-report.txt
+          else
+            echo "❌ App not responding on port $APP_PORT: Test failed" >> reports/test-report.txt
+            exit 1
+          fi
+
+          echo "All tests completed." >> reports/test-report.txt
+          EOF
+
+          chmod +x testscript.sh
+          ./testscript.sh
+
+      # 1️⃣2️⃣ Upload Test Report
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports/test-report.txt
